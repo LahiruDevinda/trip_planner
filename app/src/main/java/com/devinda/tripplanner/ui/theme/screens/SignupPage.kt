@@ -52,19 +52,18 @@ fun SignupPage(
     var name by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
 
-    // Reset previous auth state upon opening
+
     LaunchedEffect(Unit) {
         authViewModel.resetAuthState()
     }
 
-    // Single source of truth for handling sign up events
     LaunchedEffect(authState) {
-        when (val state = authState) {
+        when (authState) {
             is AuthState.SignUpSuccess -> {
                 Toast.makeText(
                     context.applicationContext,
                     "Account created successfully!",
-                    Toast.LENGTH_LONG
+                    Toast.LENGTH_SHORT
                 ).show()
 
                 navController.navigate("home") {
