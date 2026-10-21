@@ -24,3 +24,41 @@ A smart, interactive multi-stop trip planning Android application built using **
 - **Networking:** Retrofit 2 + KotlinX Serialization
 - **Authentication & Backend:** Firebase Authentication & Cloud Firestore
 - **Dependency Management:** Gradle Version Catalogs (`libs.versions.toml`)
+
+---
+
+## ⚙️ Firebase Setup for Contributors
+
+This project uses **Firebase Authentication** for user accounts. Because Firebase configuration files contain project identifiers, the actual `google-services.json` is not tracked in version control.
+
+Follow these steps to connect your own Firebase instance for local development:
+
+### 1. Create a Firebase Project
+1. Go to the [Firebase Console](https://console.firebase.google.com/) and click **Add project** (or link an existing Google Cloud project).
+2. In the left navigation menu, go to **Build > Authentication**.
+3. Under the **Sign-in method** tab, enable **Email/Password** provider.
+
+### 2. Register Your Local Android App
+1. On the Firebase Project Overview screen, click the **Android icon** (`+ Add app`).
+2. Enter the app's package name: `com.devinda.tripplanner` *(or check `applicationId` in `app/build.gradle.kts`)*.
+3. Add your local **Debug SHA-1 fingerprint**:
+    - In Android Studio, open the **Terminal** tab and run:
+      ```bash
+      ./gradlew signingReport
+      # On Windows:
+      .\gradlew signingReport
+      ```
+    - Copy the `SHA1` string under `Variant: debug` and paste it into Firebase.
+4. Click **Register app**.
+
+### 3. Add the Configuration File
+1. Download the generated **`google-services.json`** file.
+2. Move the downloaded file into your local project's `app/` directory:
+   ```text
+   TripPlanner/
+   ├── app/
+   │   ├── google-services.json  <-- Place file here
+   │   ├── build.gradle.kts
+   │   └── src/
+   ├── build.gradle.kts
+   └── README.md
