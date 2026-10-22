@@ -12,18 +12,18 @@ import com.devinda.tripplanner.ui.theme.screens.SignupPage
 @Composable
 fun MyAppNavigation(modifier: Modifier = Modifier, authViewModel: AuthViewModel) {
 
+
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = "login", builder = {
-        composable("login") {
-            LoginPage(modifier, navController, authViewModel)
-        }
-        composable("signup") {
-            SignupPage(modifier, navController, authViewModel)
-        }
-        composable("home") {
-            HomePage(modifier, navController, authViewModel)
-        }
-    })
+    val startDestination = if (authViewModel.isUserLoggedIn()) "home" else "login"
+
+    NavHost(
+        navController = navController,
+        startDestination = startDestination
+    ) {
+        composable("login") { LoginPage(navController = navController, authViewModel = authViewModel) }
+        composable("signup") { SignupPage(navController = navController, authViewModel = authViewModel) }
+        composable("home") { HomePage(navController = navController, authViewModel = authViewModel) }
+    }
 
 }
 
