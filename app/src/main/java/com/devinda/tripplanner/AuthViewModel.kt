@@ -16,6 +16,7 @@ class AuthViewModel : ViewModel() {
 
     private val _authState = MutableLiveData<AuthState>()
     val authState: LiveData<AuthState> = _authState
+    private var isLogged = false
 
     init {
         checkAuthState()
@@ -105,6 +106,14 @@ class AuthViewModel : ViewModel() {
 
     fun resetAuthState() {
         _authState.value = AuthState.Unauthenticated
+    }
+
+    fun logState(state: Boolean) {
+        isLogged = state
+    }
+
+    fun isUserLoggedIn(): Boolean {
+        return isLogged
     }
 }
 
