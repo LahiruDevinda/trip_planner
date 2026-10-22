@@ -16,8 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -85,6 +85,7 @@ fun HomePage(
                     IconButton(
                         onClick = {
                             authViewModel.signOut()
+                            authViewModel.logState(false)
                             Toast.makeText(context, "Logged out", Toast.LENGTH_SHORT).show()
                             navController.navigate("login") {
                                 popUpTo(0) { inclusive = true }
@@ -92,7 +93,7 @@ fun HomePage(
                         }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ExitToApp,
+                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
                             contentDescription = "Log Out",
                             tint = MaterialTheme.colorScheme.error
                         )
