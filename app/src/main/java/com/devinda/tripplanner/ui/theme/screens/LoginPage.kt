@@ -1,6 +1,8 @@
 package com.devinda.tripplanner.ui.theme.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -9,12 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -29,13 +35,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.devinda.tripplanner.AuthState
 import com.devinda.tripplanner.AuthViewModel
+import com.devinda.tripplanner.R
 
 @Composable
 fun LoginPage(
@@ -46,6 +57,7 @@ fun LoginPage(
     val context = LocalContext.current
     val authState by authViewModel.authState.observeAsState()
     val snackBarHostState = remember { SnackbarHostState() }
+    val scrollState = rememberScrollState()
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -58,99 +70,160 @@ fun LoginPage(
         modifier = modifier,
         snackbarHost = { SnackbarHost(snackBarHostState) }
     ) { innerPadding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .verticalScroll(scrollState)
+                .background(Color(0xFF161433)),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(text = "Log In", fontSize = 30.sp)
-            Spacer(modifier = Modifier.height(16.dp))
 
-            if (authState is AuthState.Error) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                ) {
-                    Text(
-                        text = (authState as AuthState.Error).message,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text(text = "Email") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text(text = "Password") },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = {
-                    authViewModel.login(
-                        email = email,
-                        password = password,
-                        onSuccess = {
-                            Toast.makeText(
-                                context.applicationContext,
-                                "Welcome back!",
-                                Toast.LENGTH_SHORT
-                            ).show()
-
-                            navController.navigate("home") {
-                                popUpTo("login") { inclusive = true }
-                            }
-                        }
-                    )
-                },
-                enabled = authState !is AuthState.Loading,
+            Image(
+                painter = painterResource(id = R.drawable.auth_banner),
+                contentDescription = "Header Illustration",
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .height(450.dp),
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(innerPadding)
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Top
             ) {
-                if (authState is AuthState.Loading) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(text = "Log In", fontSize = 16.sp)
-                }
-            }
+                Text(text = "Log In",
+                    fontSize = 28.sp,
+                    color = colorResource(R.color.text_primary))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            TextButton(
-                onClick = {
-                    navController.navigate("signup") {
-                        popUpTo("login") { inclusive = true }
+                if (authState is AuthState.Error) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp)
+                    ) {
+                        Text(
+                            text = (authState as AuthState.Error).message,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
-            ) {
-                Text(text = "Don't have an account? Sign up", fontSize = 14.sp)
+
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text(text = "Email") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+
+                        focusedTextColor = colorResource(R.color.focused_text_color),
+                        unfocusedTextColor = colorResource(R.color.unfocused_text_color),
+
+                        focusedLabelColor = colorResource(R.color.focused_label_color),
+                        unfocusedLabelColor = colorResource(R.color.unfocused_label_color),
+
+                        focusedBorderColor = colorResource(R.color.focused_border_color),
+                        unfocusedBorderColor = colorResource(R.color.unfocused_border_color),
+
+                        cursorColor = colorResource(R.color.cursor_color)
+                    )
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text(text = "Password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+
+                        focusedTextColor = colorResource(R.color.focused_text_color),
+                        unfocusedTextColor = colorResource(R.color.unfocused_text_color),
+
+                        focusedLabelColor = colorResource(R.color.focused_label_color),
+                        unfocusedLabelColor = colorResource(R.color.unfocused_label_color),
+
+                        focusedBorderColor = colorResource(R.color.focused_border_color),
+                        unfocusedBorderColor = colorResource(R.color.unfocused_border_color),
+
+                        cursorColor = colorResource(R.color.cursor_color)
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = {
+                        authViewModel.login(
+                            email = email,
+                            password = password,
+                            onSuccess = {
+                                Toast.makeText(
+                                    context.applicationContext,
+                                    "Login successful!",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+
+                                navController.navigate("home") {
+                                    popUpTo("login") { inclusive = true }
+                                }
+                            }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colorResource(R.color.button_container),
+                        contentColor = colorResource(R.color.button_text),
+                        disabledContainerColor = colorResource(R.color.button_disabled_container),
+                        disabledContentColor = colorResource(R.color.button_disabled_text)
+                    ),
+                    enabled = authState !is AuthState.Loading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                ) {
+                    if (authState is AuthState.Loading) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(text = "Log In", fontSize = 16.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                TextButton(
+                    onClick = {
+                        navController.navigate("signup") {
+                            popUpTo("login") { inclusive = true }
+                        }
+                    }
+                ) {
+                    Text(text = "Don't have an account? Sign up",
+                        fontSize = 14.sp,
+                        color = colorResource(R.color.text_primary))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
