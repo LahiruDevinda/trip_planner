@@ -181,6 +181,8 @@ fun LoginPage(
                                     Toast.LENGTH_SHORT
                                 ).show()
 
+                                authViewModel.logState(true)
+
                                 navController.navigate("home") {
                                     popUpTo("login") { inclusive = true }
                                 }
