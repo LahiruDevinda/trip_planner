@@ -37,6 +37,9 @@ android {
         compose = true
     }
     buildToolsVersion = "36.0.0"
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.3"
+    }
 }
 
 dependencies {
@@ -56,6 +59,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.auth)
+    implementation("com.google.firebase:firebase-firestore-ktx")
 
     // Traditional UI / Material
     implementation(libs.androidx.constraintlayout)
@@ -78,4 +82,7 @@ dependencies {
     // Debugging tools
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // Other
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 }
