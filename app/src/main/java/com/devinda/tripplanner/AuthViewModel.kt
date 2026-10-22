@@ -115,6 +115,11 @@ class AuthViewModel : ViewModel() {
     fun isUserLoggedIn(): Boolean {
         return isLogged
     }
+
+    fun getCurrentUserName(): String {
+        val user = auth.currentUser
+        return user?.displayName ?: "User"
+    }
 }
 
 sealed class AuthState {
