@@ -15,10 +15,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,11 +29,18 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,14 +48,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.devinda.tripplanner.AuthViewModel
 import com.devinda.tripplanner.R
-import com.google.firebase.Firebase
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.auth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,10 +63,8 @@ fun HomePage(
     authViewModel: AuthViewModel
 ) {
     val context = LocalContext.current
-    val auth: FirebaseAuth = Firebase.auth
-    val currentUser = auth.currentUser
-
-    val userName = currentUser?.displayName ?: "User"
+    val userName = authViewModel.getCurrentUserName()
+    var showCreateTripSheet by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -85,7 +91,6 @@ fun HomePage(
                     IconButton(
                         onClick = {
                             authViewModel.signOut()
-                            authViewModel.logState(false)
                             Toast.makeText(context, "Logged out", Toast.LENGTH_SHORT).show()
                             navController.navigate("login") {
                                 popUpTo(0) { inclusive = true }
@@ -107,7 +112,7 @@ fun HomePage(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    Toast.makeText(context, "Create Trip Clicked", Toast.LENGTH_SHORT).show()
+                    showCreateTripSheet = true
                 },
                 containerColor = colorResource(id = R.color.button_container),
                 contentColor = Color.White,
@@ -125,7 +130,7 @@ fun HomePage(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 QuickStatsCard()
             }
 
@@ -140,6 +145,16 @@ fun HomePage(
             item {
                 EmptyTripsPlaceholder()
             }
+        }
+
+        if (showCreateTripSheet) {
+            CreateTripBottomSheet(
+                onDismiss = { showCreateTripSheet = false },
+                onSaveTrip = { title, destination, budget ->
+                    Toast.makeText(context, "Trip '$title' created!", Toast.LENGTH_SHORT).show()
+                    showCreateTripSheet = false
+                }
+            )
         }
     }
 }
@@ -219,6 +234,81 @@ fun EmptyTripsPlaceholder() {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CreateTripBottomSheet(
+    onDismiss: () -> Unit,
+    onSaveTrip: (title: String, destination: String, budget: Double) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var title by remember { mutableStateOf("") }
+    var destination by remember { mutableStateOf("") }
+    var budget by remember { mutableStateOf("") }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Plan New Trip",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            )
+
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Trip Title (e.g., Summer Holiday)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = destination,
+                onValueChange = { destination = it },
+                label = { Text("Destination (e.g., Ella, Sri Lanka)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = budget,
+                onValueChange = { budget = it },
+                label = { Text("Estimated Budget") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = {
+                    val parsedBudget = budget.toDoubleOrNull() ?: 0.0
+                    if (title.isNotBlank() && destination.isNotBlank()) {
+                        onSaveTrip(title, destination, parsedBudget)
+                    }
+                },
+                enabled = title.isNotBlank() && destination.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colorResource(id = R.color.button_container)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+            ) {
+                Text("Save Trip", color = Color.White)
+            }
         }
     }
 }
