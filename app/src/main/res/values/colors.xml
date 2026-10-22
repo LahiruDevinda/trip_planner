@@ -12,4 +12,19 @@
     <color name="app_theme_light">#f6fbff</color>
     <color name="edit_text_border">#03a9f4</color>
     <color name="edit_text_background">#f6fbff</color>
+
+    <color name="text_primary">#ffffff</color>
+
+    <color name="button_container">#0059FF</color>
+    <color name="button_text">#ffffff</color>
+    <color name="button_disabled_container">#333333</color>
+    <color name="button_disabled_text">#777777</color>
+
+    <color name="focused_text_color">#ffffff</color>
+    <color name="unfocused_text_color">#777777</color>
+    <color name="focused_label_color">#FF9800</color>
+    <color name="unfocused_label_color">#777777</color>
+    <color name="focused_border_color">#FF9800</color>
+    <color name="unfocused_border_color">#777777</color>
+    <color name="cursor_color">#FF9800</color>
 </resources>
