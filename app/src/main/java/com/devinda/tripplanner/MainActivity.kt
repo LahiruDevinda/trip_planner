@@ -16,6 +16,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        try {
+            com.google.android.gms.maps.MapsInitializer.initialize(
+                applicationContext,
+                com.google.android.gms.maps.MapsInitializer.Renderer.LEGACY,
+                null
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("MAPS", "Init error: ${e.message}")
+        }
+
         val authViewModel : AuthViewModel by viewModels()
 
         setContent {
