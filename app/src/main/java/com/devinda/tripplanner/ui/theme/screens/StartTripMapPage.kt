@@ -3,6 +3,10 @@ package com.devinda.tripplanner.ui.theme.screens
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.location.Location
 import android.os.Looper
 import android.util.Log
@@ -17,9 +21,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -41,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,16 +56,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.devinda.tripplanner.BuildConfig
-import com.devinda.tripplanner.R
 import com.devinda.tripplanner.data.model.Trip
 import com.devinda.tripplanner.data.model.TripLocation
 import com.devinda.tripplanner.util.DirectionsHelper
@@ -70,6 +77,8 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.BitmapDescriptor
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.Firebase
@@ -84,8 +93,58 @@ import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+fun createNavigationChevronBitmap(): BitmapDescriptor? {
+    return try {
+        val size = 96
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val center = size / 2f
+
+        // 1. Soft drop shadow halo
+        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(60, 0, 0, 0)
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(center, center, size * 0.46f, shadowPaint)
+
+        // 2. White outer rim
+        val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(center, center, size * 0.40f, rimPaint)
+
+        // 3. Core Google Blue disc
+        val bluePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(26, 115, 232)
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(center, center, size * 0.34f, bluePaint)
+
+        // 4. Direction arrow pointing straight forward (0°)
+        val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            style = Paint.Style.FILL
+        }
+        val arrowPath = Path().apply {
+            moveTo(center, size * 0.22f)                       // Forward tip
+            lineTo(size * 0.65f, size * 0.66f)                // Bottom right wing
+            lineTo(center, size * 0.54f)                       // Inner rear notch
+            lineTo(size * 0.35f, size * 0.66f)                // Bottom left wing
+            close()
+        }
+        canvas.drawPath(arrowPath, arrowPaint)
+
+        BitmapDescriptorFactory.fromBitmap(bitmap)
+    } catch (e: Exception) {
+        Log.e("NAV_ICON", "Failed generating chevron bitmap: ${e.message}")
+        null
+    }
+}
 
 @SuppressLint("MissingPermission")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,6 +158,7 @@ fun StartTripMapScreen(
 
     var trip by remember { mutableStateOf<Trip?>(null) }
     var userLocation by remember { mutableStateOf<LatLng?>(null) }
+    var userBearing by remember { mutableFloatStateOf(0f) }
     var remainingStops by remember { mutableStateOf<List<TripLocation>>(emptyList()) }
     var roadPoints by remember { mutableStateOf<List<LatLng>>(emptyList()) }
     var isRerouting by remember { mutableStateOf(false) }
@@ -106,55 +166,60 @@ fun StartTripMapScreen(
     var currentSpeedKmh by remember { mutableIntStateOf(0) }
     var isFollowingUser by remember { mutableStateOf(true) }
 
-    // Observable permission state ensures the tracking listener activates immediately when granted
+    // Direct solid color avoids XML dynamic resource crashes
+    val routeColor = Color(0xFF1E88E5)
+
+    // Holder for custom navigation icon, populated safely in onMapLoaded
+    var navigationChevronIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
                 context, Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED ||
+                    ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
         )
     }
 
-    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    // Use applicationContext to prevent broker package binding mismatches
+    val fusedLocationClient = remember {
+        LocationServices.getFusedLocationProviderClient(context.applicationContext)
+    }
+
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(LatLng(6.9271, 79.8612), 16f)
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { perms ->
-        val fine = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        val coarse = perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (fine || coarse) {
-            hasLocationPermission = true
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        if (!hasLocationPermission) {
-            permissionLauncher.launch(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-            )
-        }
+        position = CameraPosition.fromLatLngZoom(LatLng(6.9271, 79.8612), 14f)
     }
 
     fun requestRouteUpdate(origin: LatLng, stops: List<TripLocation>, transportType: String) {
-        if (isRerouting || stops.isEmpty()) return
+        val validStops = stops.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+        if (validStops.isEmpty()) return
+
         coroutineScope.launch {
             isRerouting = true
             val points = withContext(Dispatchers.IO) {
-                DirectionsHelper.fetchRoadPolyline(
-                    context = context,
-                    origin = origin,
-                    stops = stops,
-                    transportType = transportType,
-                    apiKey = BuildConfig.API_KEY
-                )
+                try {
+                    DirectionsHelper.fetchRoadPolyline(
+                        context = context,
+                        origin = origin,
+                        stops = validStops,
+                        transportType = transportType,
+                        apiKey = BuildConfig.API_KEY
+                    )
+                } catch (e: Exception) {
+                    Log.e("NAV_DEBUG", "Routing API error: ${e.message}")
+                    emptyList()
+                }
             }
-            if (points.isNotEmpty()) {
-                roadPoints = points
-                hasInitialRoute = true
+
+            roadPoints = if (points.isNotEmpty()) {
+                points
+            } else {
+                listOf(origin) + validStops.map { LatLng(it.latitude, it.longitude) }
             }
+
+            hasInitialRoute = true
             isRerouting = false
         }
     }
@@ -181,7 +246,7 @@ fun StartTripMapScreen(
         }
     }
 
-    // Detect manual user touch/pan
+    // Release camera lock when user drags or zooms the map
     LaunchedEffect(cameraPositionState) {
         snapshotFlow { cameraPositionState.isMoving to cameraPositionState.cameraMoveStartedReason }
             .collect { (isMoving, reason) ->
@@ -191,25 +256,39 @@ fun StartTripMapScreen(
             }
     }
 
-    // Active location listener tied directly to hasLocationPermission
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        val granted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) hasLocationPermission = true
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission) {
+            permissionLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            )
+        }
+    }
+
+    // Continuous location tracking loop
     DisposableEffect(hasLocationPermission, trip) {
         if (!hasLocationPermission) return@DisposableEffect onDispose { }
 
-        // Seed with immediate current location so we don't wait on intervals
         fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
             .addOnSuccessListener { loc ->
                 if (loc != null) {
-                    val pt = LatLng(loc.latitude, loc.longitude)
-                    userLocation = pt
-                    Log.d("LOCATION_DEBUG", "Seeded current location: $pt")
+                    userLocation = LatLng(loc.latitude, loc.longitude)
+                    if (loc.hasBearing()) userBearing = loc.bearing
                 }
             }
 
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
-            1000L // 1-second update
+            1200L
         ).apply {
-            setMinUpdateDistanceMeters(0f) // Receive updates even on minute movements or emulator single clicks
+            setMinUpdateDistanceMeters(0f)
             setGranularity(Granularity.GRANULARITY_PERMISSION_LEVEL)
             setWaitForAccurateLocation(false)
         }.build()
@@ -219,8 +298,12 @@ fun StartTripMapScreen(
                 val loc = result.lastLocation ?: return
                 val currentPoint = LatLng(loc.latitude, loc.longitude)
                 userLocation = currentPoint
+
+                if (loc.hasBearing() && loc.speed > 0.4f) {
+                    userBearing = loc.bearing
+                }
+
                 currentSpeedKmh = ((loc.speed * 3.6f).toInt()).coerceAtLeast(0)
-                Log.d("LOCATION_DEBUG", "Live location update: $currentPoint, speed: $currentSpeedKmh")
 
                 if (isFollowingUser) {
                     coroutineScope.launch {
@@ -230,7 +313,7 @@ fun StartTripMapScreen(
                                     .target(currentPoint)
                                     .zoom(cameraPositionState.position.zoom.coerceAtLeast(16f))
                                     .bearing(if (loc.hasBearing()) loc.bearing else cameraPositionState.position.bearing)
-                                    .tilt(if (loc.hasBearing()) 45f else 0f)
+                                    .tilt(if (loc.hasBearing()) 40f else 0f)
                                     .build()
                             ),
                             600
@@ -241,8 +324,7 @@ fun StartTripMapScreen(
                 val activeTrip = trip ?: return
                 if (remainingStops.isEmpty()) return
 
-                // Check waypoint completion
-                val nextStop = remainingStops.first()
+                val nextStop = remainingStops.firstOrNull() ?: return
                 val distToStop = FloatArray(1)
                 Location.distanceBetween(
                     currentPoint.latitude, currentPoint.longitude,
@@ -254,7 +336,9 @@ fun StartTripMapScreen(
                     val updatedRemaining = remainingStops.drop(1)
                     remainingStops = updatedRemaining
                     if (updatedRemaining.isNotEmpty()) {
-                        requestRouteUpdate(currentPoint, updatedRemaining, activeTrip.transportType)
+                        val reoptimized = RouteOptimizer.optimizeRoute(currentPoint, updatedRemaining)
+                        remainingStops = reoptimized
+                        requestRouteUpdate(currentPoint, reoptimized, activeTrip.transportType)
                     } else {
                         roadPoints = emptyList()
                     }
@@ -266,7 +350,9 @@ fun StartTripMapScreen(
                     if (isOnRoad) {
                         roadPoints = trimPolylineAhead(currentPoint, roadPoints)
                     } else {
-                        requestRouteUpdate(currentPoint, remainingStops, activeTrip.transportType)
+                        val reoptimized = RouteOptimizer.optimizeRoute(currentPoint, remainingStops)
+                        remainingStops = reoptimized
+                        requestRouteUpdate(currentPoint, reoptimized, activeTrip.transportType)
                     }
                 }
             }
@@ -283,27 +369,51 @@ fun StartTripMapScreen(
         }
     }
 
-    // Load Trip from Firestore
-    LaunchedEffect(tripId) {
-        Firebase.firestore.collection("trips").document(tripId).get()
-            .addOnSuccessListener { snapshot ->
-                val loadedTrip = snapshot.toObject(Trip::class.java)
-                trip = loadedTrip
-                if (loadedTrip != null) {
-                    remainingStops = loadedTrip.locations
+    // Real-time Firestore sync: updates instantly when destinations are edited in TripDetailsPage
+    DisposableEffect(tripId) {
+        if (tripId.isBlank()) return@DisposableEffect onDispose {}
+
+        val registration = Firebase.firestore.collection("trips").document(tripId)
+            .addSnapshotListener { snapshot, error ->
+                if (error == null && snapshot != null && snapshot.exists()) {
+                    val loadedTrip = Trip.fromMap(snapshot.id, snapshot.data)
+                    trip = loadedTrip
+
+                    val origin = userLocation ?: loadedTrip.locations.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
+                    if (origin != null && loadedTrip.locations.isNotEmpty()) {
+                        val optimizedStops = RouteOptimizer.optimizeRoute(origin, loadedTrip.locations)
+                        remainingStops = optimizedStops
+                        requestRouteUpdate(origin, optimizedStops, loadedTrip.transportType)
+                    } else {
+                        remainingStops = loadedTrip.locations
+                    }
                 }
             }
+
+        onDispose { registration.remove() }
     }
 
-    // Initial Route Generation
+    // Initial Route Generation bootstrap
     LaunchedEffect(trip, userLocation) {
-        val activeTrip = trip
+        val activeTrip = trip ?: return@LaunchedEffect
+        if (hasInitialRoute || activeTrip.locations.isEmpty()) return@LaunchedEffect
+
         val origin = userLocation
-        if (!hasInitialRoute && activeTrip != null && origin != null && remainingStops.isNotEmpty()) {
-            val optimized = RouteOptimizer.optimizeRoute(origin, remainingStops)
+        if (origin != null) {
+            val optimized = RouteOptimizer.optimizeRoute(origin, activeTrip.locations)
             remainingStops = optimized
             requestRouteUpdate(origin, optimized, activeTrip.transportType)
-            cameraPositionState.move(CameraUpdateFactory.newLatLngZoom(origin, 16.5f))
+            cameraPositionState.move(CameraUpdateFactory.newLatLngZoom(origin, 15.5f))
+        } else {
+            delay(1200)
+            if (!hasInitialRoute && userLocation == null && activeTrip.locations.isNotEmpty()) {
+                val first = activeTrip.locations.first()
+                val start = LatLng(first.latitude, first.longitude)
+                val optimized = RouteOptimizer.optimizeRoute(start, activeTrip.locations)
+                remainingStops = optimized
+                requestRouteUpdate(start, optimized, activeTrip.transportType)
+                cameraPositionState.move(CameraUpdateFactory.newLatLngZoom(start, 14f))
+            }
         }
     }
 
@@ -327,14 +437,15 @@ fun StartTripMapScreen(
                 ExtendedFloatingActionButton(
                     onClick = {
                         isFollowingUser = true
-                        userLocation?.let { loc ->
+                        val target = userLocation ?: remainingStops.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
+                        target?.let { loc ->
                             coroutineScope.launch {
                                 cameraPositionState.animate(
                                     CameraUpdateFactory.newCameraPosition(
                                         CameraPosition.Builder()
                                             .target(loc)
-                                            .zoom(16.5f)
-                                            .tilt(45f)
+                                            .zoom(16f)
+                                            .tilt(40f)
                                             .build()
                                     ),
                                     600
@@ -344,7 +455,7 @@ fun StartTripMapScreen(
                     },
                     icon = { Icon(Icons.Default.MyLocation, contentDescription = null) },
                     text = { Text("Recenter") },
-                    containerColor = colorResource(id = R.color.button_container),
+                    containerColor = routeColor,
                     contentColor = Color.White
                 )
             }
@@ -354,25 +465,51 @@ fun StartTripMapScreen(
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraPositionState,
-                properties = MapProperties(isMyLocationEnabled = userLocation != null && hasLocationPermission),
+                // Keeps false to prevent the Maps SDK from calling the crashed internal getColor()
+                properties = MapProperties(isMyLocationEnabled = false),
                 uiSettings = MapUiSettings(
                     myLocationButtonEnabled = false,
                     compassEnabled = true,
                     zoomControlsEnabled = false
-                )
+                ),
+                onMapLoaded = {
+                    // Safe to generate BitmapDescriptor here: Maps internal binder is fully ready
+                    navigationChevronIcon = createNavigationChevronBitmap()
+                        ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)
+                }
             ) {
-                remainingStops.forEachIndexed { index, stop ->
+                // Live Vehicle Beacon (Rotating Chevron Navigation Marker)
+                userLocation?.let { loc ->
+                    val userMarkerState = remember(loc.latitude, loc.longitude) { MarkerState(position = loc) }
                     Marker(
-                        state = MarkerState(position = LatLng(stop.latitude, stop.longitude)),
-                        title = "${index + 1}. ${stop.name}",
-                        snippet = if (index == 0) "Next destination" else "Upcoming stop"
+                        state = userMarkerState,
+                        title = "Your Position",
+                        icon = navigationChevronIcon ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE),
+                        anchor = Offset(0.5f, 0.5f),
+                        rotation = userBearing,
+                        flat = true
                     )
                 }
 
-                if (roadPoints.isNotEmpty()) {
+                // Destination Markers
+                remainingStops.forEachIndexed { index, stop ->
+                    if (stop.latitude != 0.0 && stop.longitude != 0.0) {
+                        val stopMarkerState = remember(stop.name, stop.latitude, stop.longitude) {
+                            MarkerState(position = LatLng(stop.latitude, stop.longitude))
+                        }
+                        Marker(
+                            state = stopMarkerState,
+                            title = "${index + 1}. ${stop.name}",
+                            snippet = if (index == 0) "Next destination" else "Upcoming stop"
+                        )
+                    }
+                }
+
+                // Polyline Route
+                if (roadPoints.size >= 2) {
                     Polyline(
                         points = roadPoints,
-                        color = colorResource(id = R.color.button_container),
+                        color = routeColor,
                         width = 14f
                     )
                 }
@@ -382,59 +519,77 @@ fun StartTripMapScreen(
                 CircularProgressIndicator(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 16.dp)
+                        .padding(top = 16.dp),
+                    color = routeColor
                 )
             }
 
+            // Bottom Navigation HUD Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
                     .align(Alignment.BottomCenter),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
+                    Surface(
                         modifier = Modifier.size(46.dp),
-                        contentAlignment = Alignment.Center
+                        shape = CircleShape,
+                        color = routeColor.copy(alpha = 0.12f)
                     ) {
-                        Icon(
-                            Icons.Default.Navigation,
-                            contentDescription = null,
-                            tint = colorResource(id = R.color.button_container),
-                            modifier = Modifier.size(34.dp)
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Navigation,
+                                contentDescription = null,
+                                tint = routeColor,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
+                        val nextStop = remainingStops.firstOrNull()
                         Text(
-                            text = if (remainingStops.isNotEmpty()) "Next: ${remainingStops.first().name}" else "Arrived at destination!",
+                            text = if (nextStop != null) "Next: ${nextStop.name}" else "Arrived at Destination!",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontSize = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (isRerouting) "Rerouting..." else "Remaining stops: ${remainingStops.size}",
+                            text = when {
+                                isRerouting -> "Optimizing & Rerouting..."
+                                remainingStops.isNotEmpty() -> "${remainingStops.size} stop(s) remaining"
+                                else -> "All stops completed"
+                            },
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isRerouting) routeColor else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
                     if (currentSpeedKmh > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
                                 text = "$currentSpeedKmh km/h",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
                     }
