@@ -3,6 +3,7 @@ package com.devinda.tripplanner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.devinda.tripplanner.data.model.Trip
+import com.devinda.tripplanner.data.model.TripLocation
 import com.devinda.tripplanner.data.repository.TripRepository
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
@@ -40,21 +41,21 @@ class TripViewModel(
     }
 
     fun createTrip(
-        destination: String,
         title: String,
-        startDate: String,
-        endDate: String,
-        budget: Double,
+        estimatedBudget: Double,
+        date: String,
+        transportType: String,
+        locations: List<TripLocation>,
         onSuccess: () -> Unit
     ) {
         val currentUserId = auth.currentUser?.uid ?: return
         val newTrip = Trip(
             userId = currentUserId,
-            destination = destination.trim(),
             title = title.trim(),
-            startDate = startDate.trim(),
-            endDate = endDate.trim(),
-            budget = budget
+            estimatedBudget = estimatedBudget,
+            date = date.trim(),
+            transportType = transportType,
+            locations = locations
         )
 
         viewModelScope.launch {
