@@ -151,7 +151,7 @@ com.devinda.tripplanner/
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/your-username/trip-planner.git
+   git clone https://github.com/LahiruDevinda/trip-planner.git
    cd trip-planner
    ```
 2. Open the project in Android Studio.
